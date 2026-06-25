@@ -22,12 +22,15 @@ Deployed to Vercel at `music-manager-agent.vercel.app`. Supabase, Wassist, and O
 - **Email layer** — Gmail API client (OAuth) with SMTP + SendGrid fallbacks. Email classifier (LLM triage: new_brief / negotiation_reply / other). Inbound pipeline: poll → dedupe → strip quoted history → classify → route. Threaded outbound with In-Reply-To headers. Email seed route for demo safety.
 - **Supabase** — schema deployed with vector extension, 8 tables, realtime enabled. Email threading fields added (gmail_message_id, gmail_thread_id, last_message_id).
 - **Deployment** — Vercel production with all env vars. GitHub public repo at DarlingtonDeveloper/SplitDecision.
+- **Outreach scout** — Brave Search integration for real artist discovery. Multi-query contact search (management, booking, socials). GPT-4.1 for extraction. Saves contacts to CRM. Flags missing emails with warnings.
+- **PayPal return/cancel pages** — capture on return, graceful cancel, WhatsApp notification on payment.
+- **Env validation** — crashes on missing required vars, warns with impact on optional.
+- **Webhook fix** — `normalizeInbound` fixed for real Wassist payloads (event envelope, quickReply.quickReplyId). Approval flow tested end-to-end on production.
 
 ### What's left
 1. **Modal CLAP deploy + prebake** — `modal/prebake.py` now contains a real Modal/librosa/CLAP implementation, but it still needs Modal auth/deploy, beat audio input, endpoint URLs, and a production smoke test. Until `MODAL_CLAP_TEXT_URL` / `MODAL_CLAP_AUDIO_URL` are set, API routes fall back to pseudo-embeddings.
-2. **Outreach scout** — hardcoded placeholder artist/contact. No real discovery logic.
-3. **Catalogue admin card** — spec calls for a "3 unregistered works" WhatsApp card. Not built.
-4. **Vercel PayPal env check** — local sandbox flow passed, but production `POST /api/paypal/create-order` returns HTTP 500, consistent with missing/invalid `PAYPAL_CLIENT_ID` / `PAYPAL_SECRET` or inaccessible production env.
+2. **Catalogue admin card** — spec calls for a "3 unregistered works" WhatsApp card. Not built.
+3. **Vercel PayPal env check** — production `POST /api/paypal/create-order` returns HTTP 500. Need to set `PAYPAL_CLIENT_ID` / `PAYPAL_SECRET` in Vercel env.
 
 ---
 
@@ -90,7 +93,7 @@ Deployed to Vercel at `music-manager-agent.vercel.app`. Supabase, Wassist, and O
 | `POST /api/paypal/create-order` | Done | Sandbox lease link |
 | `POST /api/paypal/webhook` | Done | Capture → sales row → WhatsApp notification |
 | `POST /api/cron/poll-inbox` | Done | Gmail inbox poll (needs OAuth creds) |
-| `POST /api/cron/outreach` | Stub | Outreach scout trigger |
+| `POST /api/cron/outreach` | Done | Brave Search artist scout with GPT-4.1 |
 
 ---
 
@@ -111,31 +114,25 @@ Deployed to Vercel at `music-manager-agent.vercel.app`. Supabase, Wassist, and O
 ---
 
 ### Stream B — Outreach & Contacts (the reach)
-**Owner:** Unassigned. **Goal:** Scout finds real targets, drafts personalised intros.
+**Status: DONE**
 
-| # | Task | File(s) | Details |
-|---|---|---|---|
-| B1 | Outreach scout — real discovery | `src/lib/agent/outreach.ts` | Replace hardcoded artist. Pull from `contacts` table or LLM-generate targets. |
-| B2 | Seed outreach contacts | `supabase/seed-contacts.sql` (new) | Insert 5-10 demo contacts (artist name, role, email, genre). |
-| B3 | Catalogue admin card | `src/lib/agent/pipeline.ts` | Query beats missing embeddings. WhatsApp: "3 beats need attention." |
-| B4 | Wire cron outreach | `src/app/api/cron/outreach/route.ts` | Connect to real `runOutreachScout()`. |
+- B1: Brave Search artist discovery with GPT-4.1 extraction
+- B2: Contacts saved to CRM table automatically from scout discoveries
+- B3: Catalogue admin card (deferred — nice-to-have)
+- B4: Cron outreach wired and tested (POST /api/cron/outreach)
 
-**Test:** Cron fires → scout picks contact + beat → draft on WhatsApp → OK → email sends.
+Tested: Scout found Roddy Ricch for "Midnight" beat, drafted personalised intro, sent WhatsApp approval card.
 
 ---
 
 ### Stream C — Payments & Hardening (the money)
-**Owner:** Unassigned. **Goal:** Keep PayPal/approval flows working in production.
+**Status: DONE** (except PayPal env on Vercel)
 
-| # | Task | File(s) | Details |
-|---|---|---|---|
-| C1 | PayPal return page | `src/app/api/paypal/return/route.ts` | Done + pushed. Captures order, updates sale, logs action, redirects to dashboard. |
-| C2 | PayPal cancel page | `src/app/api/paypal/cancel/route.ts` | Done + pushed. Graceful cancellation redirect + action log. |
-| C3 | WhatsApp approvals | `src/app/api/webhooks/whatsapp/route.ts` | Done per live test: OK / NO / WHY / STATUS against a real draft. |
-| C4 | Vercel PayPal env | Vercel project env | Production `POST /api/paypal/create-order` currently returns HTTP 500. Verify/set `PAYPAL_CLIENT_ID`, `PAYPAL_SECRET`, and redeploy. |
-| C5 | Env validation | `src/lib/config.ts` | Warn on missing optional keys, crash on required. |
-
-**Test:** Full PayPal flow: draft → OK → email with link → buyer clicks → return → sale → WhatsApp confirmation.
+- C1: PayPal return page — captures order, updates sale, WhatsApp notification, redirects
+- C2: PayPal cancel page — graceful redirect + action log
+- C3: WhatsApp approvals — fixed and tested end-to-end on production
+- C4: Vercel PayPal env — still needs `PAYPAL_CLIENT_ID` + `PAYPAL_SECRET` set
+- C5: Env validation — crashes on missing required, warns on optional with impact
 
 ---
 
