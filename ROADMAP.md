@@ -24,11 +24,10 @@ Deployed to Vercel at `music-manager-agent.vercel.app`. Supabase, Wassist, and O
 - **Deployment** — Vercel production with all env vars. GitHub public repo at DarlingtonDeveloper/SplitDecision.
 
 ### What's left
-1. **Modal CLAP prebake** — `modal/prebake.py` is a stub. No librosa or CLAP. API routes fall back to pseudo-embeddings. Beats match by hash not sound.
+1. **Modal CLAP deploy + prebake** — `modal/prebake.py` now contains a real Modal/librosa/CLAP implementation, but it still needs Modal auth/deploy, beat audio input, endpoint URLs, and a production smoke test. Until `MODAL_CLAP_TEXT_URL` / `MODAL_CLAP_AUDIO_URL` are set, API routes fall back to pseudo-embeddings.
 2. **Outreach scout** — hardcoded placeholder artist/contact. No real discovery logic.
-3. **PayPal return/cancel pages** — pipeline references these but routes don't exist.
-4. **Catalogue admin card** — spec calls for a "3 unregistered works" WhatsApp card. Not built.
-5. **Webhook inbound processing** — Wassist webhook receives taps but the approval/rejection actions aren't landing in the database (needs debugging on production).
+3. **Catalogue admin card** — spec calls for a "3 unregistered works" WhatsApp card. Not built.
+4. **Vercel PayPal env check** — local sandbox flow passed, but production `POST /api/paypal/create-order` returns HTTP 500, consistent with missing/invalid `PAYPAL_CLIENT_ID` / `PAYPAL_SECRET` or inaccessible production env.
 
 ---
 
@@ -98,14 +97,14 @@ Deployed to Vercel at `music-manager-agent.vercel.app`. Supabase, Wassist, and O
 ## Remaining work streams
 
 ### Stream A — Modal & ML (the ears)
-**Owner:** Unassigned. **Goal:** Real CLAP embeddings replace pseudo-hashes.
+**Owner:** Unassigned. **Goal:** Deploy real CLAP embeddings and replace pseudo-hash fallback in production.
 
 | # | Task | File(s) | Details |
 |---|---|---|---|
-| A1 | Implement `modal/prebake.py` | `modal/prebake.py` | librosa `beat_track` → bpm, chroma → key. CLAP audio encoder → 512-dim embedding. Batch process 15-30 beats, upsert to Supabase `beats` table. |
+| A1 | Implement `modal/prebake.py` | `modal/prebake.py` | Done in code: Modal T4 app, Transformers CLAP, librosa BPM/key, batch upload/upsert path. Needs Modal deploy + real beat audio run. |
 | A2 | Deploy Modal CLAP text endpoint | Modal app | Accept `{text}`, return `{embedding: float[512]}`. Wire URL into `MODAL_CLAP_TEXT_URL` env. |
-| A3 | Deploy Modal CLAP audio endpoint | Modal app | Accept audio file, return `{embedding: float[512]}`. Wire URL into `MODAL_CLAP_AUDIO_URL` env. |
-| A4 | Upload beat audio files to Supabase Storage | script | Store URLs in `beats.audio_url`. |
+| A3 | Deploy Modal CLAP audio endpoint | Modal app | Accept `{audio_url}`, return `{embedding: float[512], bpm, music_key}`. Wire URL into `MODAL_CLAP_AUDIO_URL` env. |
+| A4 | Upload/prebake beat audio files | `modal/prebake.py` | Run `modal run modal/prebake.py --audio-dir ./beats`; stores URLs in `beats.audio_url` and writes real embeddings. |
 
 **Test:** Seed a brief → matcher returns top 3 with real cosine scores > 0.5.
 
@@ -126,14 +125,15 @@ Deployed to Vercel at `music-manager-agent.vercel.app`. Supabase, Wassist, and O
 ---
 
 ### Stream C — Payments & Hardening (the money)
-**Owner:** Unassigned. **Goal:** PayPal completes. Webhooks don't crash.
+**Owner:** Unassigned. **Goal:** Keep PayPal/approval flows working in production.
 
 | # | Task | File(s) | Details |
 |---|---|---|---|
-| C1 | PayPal return page | `src/app/api/paypal/return/route.ts` (new) | Capture order, write sales row, redirect to dashboard. |
-| C2 | PayPal cancel page | `src/app/api/paypal/cancel/route.ts` (new) | Graceful cancellation redirect. |
-| C3 | Debug webhook approvals | `src/app/api/webhooks/whatsapp/route.ts` | Button taps from Wassist arrive but OK/NO aren't processing. Likely payload shape mismatch in `normalizeInbound`. |
-| C4 | Env validation | `src/lib/config.ts` | Warn on missing optional keys, crash on required. |
+| C1 | PayPal return page | `src/app/api/paypal/return/route.ts` | Done + pushed. Captures order, updates sale, logs action, redirects to dashboard. |
+| C2 | PayPal cancel page | `src/app/api/paypal/cancel/route.ts` | Done + pushed. Graceful cancellation redirect + action log. |
+| C3 | WhatsApp approvals | `src/app/api/webhooks/whatsapp/route.ts` | Done per live test: OK / NO / WHY / STATUS against a real draft. |
+| C4 | Vercel PayPal env | Vercel project env | Production `POST /api/paypal/create-order` currently returns HTTP 500. Verify/set `PAYPAL_CLIENT_ID`, `PAYPAL_SECRET`, and redeploy. |
+| C5 | Env validation | `src/lib/config.ts` | Warn on missing optional keys, crash on required. |
 
 **Test:** Full PayPal flow: draft → OK → email with link → buyer clicks → return → sale → WhatsApp confirmation.
 
