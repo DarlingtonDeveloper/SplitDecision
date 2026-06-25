@@ -28,7 +28,7 @@ Deployed to Vercel at `music-manager-agent.vercel.app`. Supabase, Wassist, and O
 - **Webhook fix** — `normalizeInbound` fixed for real Wassist payloads (event envelope, quickReply.quickReplyId). Approval flow tested end-to-end on production.
 
 ### What's left
-1. **Modal CLAP deploy + prebake** — `modal/prebake.py` now contains a real Modal/librosa/CLAP implementation, but it still needs Modal auth/deploy, beat audio input, endpoint URLs, and a production smoke test. Until `MODAL_CLAP_TEXT_URL` / `MODAL_CLAP_AUDIO_URL` are set, API routes fall back to pseudo-embeddings.
+1. **Modal CLAP prebake + Vercel wiring** — Modal app is deployed and the text endpoint returned a real 512-d CLAP embedding in smoke test. Still needs Vercel `MODAL_CLAP_TEXT_URL` / `MODAL_CLAP_AUDIO_URL` env wiring, audio endpoint smoke test with a real beat URL, and a prebake run against beat audio. Until the Vercel env vars are set, API routes fall back to pseudo-embeddings.
 2. **Catalogue admin card** — spec calls for a "3 unregistered works" WhatsApp card. Not built.
 3. **Vercel PayPal env check** — production `POST /api/paypal/create-order` returns HTTP 500. Need to set `PAYPAL_CLIENT_ID` / `PAYPAL_SECRET` in Vercel env.
 
@@ -104,10 +104,10 @@ Deployed to Vercel at `music-manager-agent.vercel.app`. Supabase, Wassist, and O
 
 | # | Task | File(s) | Details |
 |---|---|---|---|
-| A1 | Implement `modal/prebake.py` | `modal/prebake.py` | Done in code: Modal T4 app, Transformers CLAP, librosa BPM/key, batch upload/upsert path. Needs Modal deploy + real beat audio run. |
-| A2 | Deploy Modal CLAP text endpoint | Modal app | Accept `{text}`, return `{embedding: float[512]}`. Wire URL into `MODAL_CLAP_TEXT_URL` env. |
-| A3 | Deploy Modal CLAP audio endpoint | Modal app | Accept `{audio_url}`, return `{embedding: float[512], bpm, music_key}`. Wire URL into `MODAL_CLAP_AUDIO_URL` env. |
-| A4 | Upload/prebake beat audio files | `modal/prebake.py` | Run `modal run modal/prebake.py --audio-dir ./beats`; stores URLs in `beats.audio_url` and writes real embeddings. |
+| A1 | Implement `modal/prebake.py` | `modal/prebake.py` | Done in code: Modal T4 app, Transformers CLAP, librosa BPM/key, batch upload/upsert path. |
+| A2 | Deploy Modal CLAP text endpoint | Modal app | Done: `https://dandiggas--splitdecision-clap-embed-text.modal.run`; smoke returned `{embedding: float[512]}`. Still wire URL into Vercel `MODAL_CLAP_TEXT_URL`. |
+| A3 | Deploy Modal CLAP audio endpoint | Modal app | Deployed: `https://dandiggas--splitdecision-clap-embed-audio.modal.run`. Still smoke with real beat URL and wire into Vercel `MODAL_CLAP_AUDIO_URL`. |
+| A4 | Upload/prebake beat audio files | `modal/prebake.py` | Still needed: run `modal run modal/prebake.py --audio-dir ./beats`; stores URLs in `beats.audio_url` and writes real embeddings. |
 
 **Test:** Seed a brief → matcher returns top 3 with real cosine scores > 0.5.
 
@@ -167,8 +167,8 @@ All set on Vercel production. Secrets in GitHub repository secrets.
 | `GMAIL_OAUTH_*` | Not set (need OAuth refresh token) |
 | `PAYPAL_CLIENT_ID` | Not set |
 | `PAYPAL_SECRET` | Not set |
-| `MODAL_CLAP_TEXT_URL` | Not set (needs Modal deploy) |
-| `MODAL_CLAP_AUDIO_URL` | Not set (needs Modal deploy) |
+| `MODAL_CLAP_TEXT_URL` | Modal endpoint deployed; still not set on Vercel from this machine |
+| `MODAL_CLAP_AUDIO_URL` | Modal endpoint deployed; still not set on Vercel from this machine |
 
 ---
 
