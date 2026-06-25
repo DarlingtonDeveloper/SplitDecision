@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { logAction } from "@/lib/actions";
 import { capturePayPalOrder } from "@/lib/paypal";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { sendWhatsApp } from "@/lib/whatsapp";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,10 @@ export async function GET(req: NextRequest) {
       action_taken: `PayPal order captured: ${amount ? `£${amount}` : orderId}`,
       channel: "paypal",
     });
+
+    try {
+      await sendWhatsApp("", `💰 Payment received — £${amount ?? "?"}\nOrder ${orderId} captured.`);
+    } catch { /* best-effort */ }
 
     return NextResponse.redirect(`${appUrl}/?payment=success&order=${encodeURIComponent(orderId)}`);
   } catch (error) {
