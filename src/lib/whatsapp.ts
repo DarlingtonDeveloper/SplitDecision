@@ -144,39 +144,52 @@ export interface InboundMessage {
 /**
  * Normalise Wassist webhook payload into a common shape.
  * Handles both quick-reply button taps and free-text messages.
+ *
+ * Wassist webhook payloads come in event wrappers:
+ *   { "event": "message.received", "data": { "message": {...}, "conversation": {...}, "contact": {...} } }
+ * Or possibly flat (just the message object).
+ *
+ * Message shapes (from Wassist API):
+ *   Text:       { "id": "...", "type": "text", "text": { "body": "Hello" } }
+ *   Quick-reply: { "id": "...", "type": "quick_reply", "quickReply": { "text": "Approve", "quickReplyId": "OK:A1" } }
  */
 export function normalizeInbound(payload: unknown): InboundMessage | null {
   if (!payload || typeof payload !== "object") return null;
   const root = payload as Record<string, unknown>;
 
-  // Try nested message object first, then root
-  const message = (root.message ?? root) as Record<string, unknown>;
+  // Unwrap event envelope if present: { event, data: { message, conversation, contact } }
+  const data = (root.data && typeof root.data === "object" ? root.data : root) as Record<string, unknown>;
+  const message = (data.message && typeof data.message === "object" ? data.message : data) as Record<string, unknown>;
 
-  const messageId =
-    pick(message, ["id", "message_id", "messageId", "wamid"]) ??
-    pick(root, ["id", "message_id"]);
+  // Message ID
+  const messageId = pick(message, ["id", "message_id", "messageId"]) ?? pick(root, ["id"]);
+  if (!messageId) return null;
 
+  // Conversation ID — from envelope or fallback to producer conv
   const conversationId =
+    pick(data, ["conversationId"]) ??
+    deepPick(data, ["conversation", "id"]) ??
     pick(root, ["conversationId"]) ??
     deepPick(root, ["conversation", "id"]);
 
-  // Quick-reply button tap (carries our quickReplyId like "OK:A3")
-  const quickReplyId =
-    deepPick(message, ["quickReply", "id"]) ??
-    pick(message, ["quickReplyId"]);
+  // Quick-reply button tap: quickReply.quickReplyId (e.g. "OK:A1")
+  const quickReplyId = deepPick(message, ["quickReply", "quickReplyId"]);
 
-  // Free-text message body
-  const textBody =
-    deepPick(message, ["text", "body"]) ??
-    pick(message, ["body", "text", "content"]);
+  // Free-text message: text.body (e.g. "OK A1")
+  const textBody = deepPick(message, ["text", "body"]);
 
+  // Fallback: bare body/text field
+  const bareBody = pick(message, ["body", "text", "content"]);
+
+  const raw = quickReplyId ?? textBody ?? bareBody;
+  if (!raw) return null;
+
+  // Contact info
   const from =
     pick(message, ["from", "sender", "phone", "wa_id"]) ??
-    pick(root, ["from", "sender", "phone"]) ??
-    deepPick(message, ["contact", "wa_id"]);
-
-  const raw = quickReplyId ?? textBody;
-  if (!messageId || !raw) return null;
+    deepPick(data, ["contact", "phoneNumber"]) ??
+    deepPick(data, ["contact", "wa_id"]) ??
+    pick(root, ["from", "sender", "phone"]);
 
   // "OK:A3" (button) or "OK A3" (typed) -> normalize
   const body = String(raw).replace(":", " ").trim();
