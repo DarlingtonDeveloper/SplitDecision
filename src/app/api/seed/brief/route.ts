@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { processBrief } from "@/lib/agent/pipeline";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const DEMO_BRIEF = `From: Sable (A&R, Polydor)
 Subject: Beat brief — developing artist
