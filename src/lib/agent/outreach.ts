@@ -31,15 +31,24 @@ Only extract real information from the search results. Never invent emails or co
 If no good fit is found, return name "none".`;
 
 const CONTACT_EXTRACT_SYSTEM = `You extract music artist management contact information from web search results.
+Look carefully for:
+- Management company names and their general enquiry emails
+- Booking agent emails
+- Label A&R contact emails
+- Any email address visible in the results, even in URLs or page descriptions
+- Social media bios that mention management
+
 Output strict JSON:
 {
-  "manager_name": "<name or null>",
-  "email": "<email address if found, or null>",
+  "manager_name": "<manager or management company name, or null>",
+  "email": "<most relevant email address found — prefer management@ or booking@ over personal, or null>",
   "phone": "<phone number if found, or null>",
-  "source": "<where you found it>"
+  "management_company": "<company name if found, or null>",
+  "source": "<URL where you found the contact info>"
 }
 
-Only extract real information visible in the search results. Never invent or guess emails.`;
+Only extract real information visible in the search results. Never invent or guess emails.
+If you see a management company but no email, still return the company name — we can search for their email next.`;
 
 /**
  * Outreach scout — finds real artists via web search,
@@ -88,7 +97,8 @@ export async function runOutreachScout() {
 
   const artist = await completeJson<DiscoveredArtist>(
     EXTRACT_SYSTEM,
-    `Beat: "${beat.title}" — ${beat.genre}, moods: ${(beat.mood_tags ?? []).join(", ")}, refs: ${(beat.reference_artists ?? []).join(", ")}, ${beat.bpm ?? "?"}bpm, ${beat.music_key ?? "?"}\n\nSearch results:\n${resultsText}`
+    `Beat: "${beat.title}" — ${beat.genre}, moods: ${(beat.mood_tags ?? []).join(", ")}, refs: ${(beat.reference_artists ?? []).join(", ")}, ${beat.bpm ?? "?"}bpm, ${beat.music_key ?? "?"}\n\nSearch results:\n${resultsText}`,
+    "gpt-4.1"
   );
 
   if (!artist.name || artist.name.toLowerCase() === "none") {
@@ -123,21 +133,40 @@ export async function runOutreachScout() {
         manager_name: string | null;
         email: string | null;
         phone: string | null;
+        management_company: string | null;
         source: string | null;
-      }>(CONTACT_EXTRACT_SYSTEM, `Artist: ${artist.name}\n\nSearch results:\n${contactText}`);
+      }>(CONTACT_EXTRACT_SYSTEM, `Artist: ${artist.name}\n\nSearch results:\n${contactText}`, "gpt-4.1");
 
       email = contact.email;
       managerName = managerName ?? contact.manager_name;
 
-      if (contact.phone) {
-        // Store phone too if found
-        await logAction({
-          pillar: "outreach",
-          trigger: "scout",
-          action_taken: `Found contact for ${artist.name}: ${managerName ?? "direct"} — ${email ?? "no email"}, phone: ${contact.phone}`,
-          channel: "internal",
-        });
+      // If we found a management company but no email, search for the company's email
+      if (!email && contact.management_company) {
+        const mgmtResults = await searchForContact(contact.management_company);
+        if (mgmtResults.length) {
+          const mgmtText = mgmtResults
+            .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.description}`)
+            .join("\n\n");
+
+          const mgmtContact = await completeJson<{
+            manager_name: string | null;
+            email: string | null;
+            phone: string | null;
+            management_company: string | null;
+            source: string | null;
+          }>(CONTACT_EXTRACT_SYSTEM, `Management company: ${contact.management_company}\nArtist: ${artist.name}\n\nSearch results:\n${mgmtText}`, "gpt-4.1");
+
+          email = mgmtContact.email;
+          managerName = managerName ?? mgmtContact.manager_name;
+        }
       }
+
+      await logAction({
+        pillar: "outreach",
+        trigger: "scout",
+        action_taken: `Contact search for ${artist.name}: ${managerName ?? "no manager"}, ${email ?? "no email"}${contact.management_company ? `, mgmt: ${contact.management_company}` : ""}`,
+        channel: "internal",
+      });
     }
   }
 

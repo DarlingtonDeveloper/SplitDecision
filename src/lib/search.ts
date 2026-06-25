@@ -82,7 +82,21 @@ export async function searchForArtists(beat: {
 
 /**
  * Search for an artist's management/booking contact info.
+ * Runs multiple targeted queries to maximise chances of finding an email.
  */
 export async function searchForContact(artistName: string): Promise<SearchResult[]> {
-  return webSearch(`"${artistName}" manager email contact booking management`, 5);
+  const queries = [
+    `"${artistName}" management email booking contact`,
+    `"${artistName}" manager "@" email site:instagram.com OR site:twitter.com OR site:linktree`,
+    `"${artistName}" booking enquiries email management company`,
+  ];
+
+  const allResults: SearchResult[] = [];
+  for (const q of queries) {
+    const results = await webSearch(q, 5);
+    allResults.push(...results);
+    // Stop early if we found something with an @ sign
+    if (allResults.some(r => r.description.includes("@") || r.title.includes("@"))) break;
+  }
+  return allResults;
 }
