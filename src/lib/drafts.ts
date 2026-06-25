@@ -1,12 +1,7 @@
 import { getSupabaseAdmin } from "./supabase";
 import { logAction } from "./actions";
 import { nextShortCode } from "./short-code";
-import {
-  formatDraftCard,
-  formatSentConfirmation,
-  sendWhatsApp,
-} from "./whatsapp";
-import { getProducerWhatsApp } from "./config";
+import { notifyDraft, notifySent, sendWhatsApp } from "./whatsapp";
 import { sendEmail } from "./email";
 import type { Draft, Pillar } from "./types";
 
@@ -55,14 +50,13 @@ export async function createDraft(input: {
   });
 
   if (input.whatsappCard) {
-    const card = formatDraftCard({
+    const summary = [input.whatsappCard.headline, ...input.whatsappCard.lines].join("\n");
+    await notifyDraft({
       shortCode: short_code,
       pillar: input.pillar.charAt(0).toUpperCase() + input.pillar.slice(1),
-      headline: input.whatsappCard.headline,
-      lines: input.whatsappCard.lines,
-      warning: input.whatsappCard.warning,
+      summary,
+      flag: input.whatsappCard.warning,
     });
-    await sendWhatsApp(getProducerWhatsApp(), card);
   }
 
   return data as Draft;
@@ -111,14 +105,7 @@ export async function approveDraft(shortCode: string): Promise<Draft> {
     draft_short_code: code,
   });
 
-  await sendWhatsApp(
-    getProducerWhatsApp(),
-    formatSentConfirmation({
-      shortCode: code,
-      to: draft.to_address ?? "counterparty",
-      extra: draft.payment_link ? "Lease link attached." : undefined,
-    })
-  );
+  await notifySent(code, draft.to_address ?? "counterparty", draft.payment_link ?? undefined);
 
   return (updated ?? draft) as Draft;
 }
@@ -140,7 +127,7 @@ export async function rejectDraft(shortCode: string): Promise<void> {
     draft_short_code: code,
   });
 
-  await sendWhatsApp(getProducerWhatsApp(), `❌ Rejected #${code}. Draft archived.`);
+  await sendWhatsApp("", `❌ Rejected #${code}. Draft archived.`);
 }
 
 export async function getDraftReasoning(shortCode: string): Promise<string> {

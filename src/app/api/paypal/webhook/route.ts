@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { logAction } from "@/lib/actions";
 import { sendWhatsApp } from "@/lib/whatsapp";
-import { getProducerWhatsApp } from "@/lib/config";
 
 export const runtime = "nodejs";
 
@@ -30,10 +29,7 @@ export async function POST(req: NextRequest) {
       });
 
       try {
-        await sendWhatsApp(
-          getProducerWhatsApp(),
-          `💰 Sale captured — £${amount ?? "?"} (order ${orderId})`
-        );
+        await sendWhatsApp("", `💰 Sale captured — £${amount ?? "?"} (order ${orderId})`);
       } catch {
         /* demo continues */
       }

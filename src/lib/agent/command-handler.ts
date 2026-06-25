@@ -6,7 +6,6 @@ import {
   rejectDraft,
 } from "../drafts";
 import { sendWhatsApp } from "../whatsapp";
-import { getProducerWhatsApp } from "../config";
 import { draftNegotiationReply } from "./negotiator";
 import { getSupabaseAdmin } from "../supabase";
 import { createDraft } from "../drafts";
@@ -15,8 +14,7 @@ import { logAction } from "../actions";
 let scoutsPaused = false;
 
 export async function handleWhatsAppCommand(from: string, body: string) {
-  const producer = getProducerWhatsApp();
-  const replyTo = from === producer || from.includes(producer.slice(-8)) ? producer : producer;
+  const replyTo = from;
 
   const cmd = parseCommand(body);
 
@@ -70,7 +68,7 @@ async function handleEdit(code: string, note: string) {
     .single();
 
   if (!draft) {
-    await sendWhatsApp(getProducerWhatsApp(), `Draft #${code} not found.`);
+    await sendWhatsApp("", `Draft #${code} not found.`);
     return;
   }
 
