@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "crypto";
-import { normalizeInbound } from "@/lib/whatsapp";
+import { normalizeInbound, sendText } from "@/lib/whatsapp";
 import { isDuplicateMessagePersistent } from "@/lib/idempotency";
 import { handleWhatsAppCommand } from "@/lib/agent/command-handler";
+import { processBrief } from "@/lib/agent/pipeline";
+import { logAction } from "@/lib/actions";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 function verifySignature(rawBody: string, signature: string | null): boolean {
   const secret = process.env.WASSIST_SIGNING_SECRET;
@@ -38,10 +41,40 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, deduped: true });
   }
 
+  // Determine if this is the producer (command) or an external contact (brief)
+  const producerConvId = process.env.WASSIST_PRODUCER_CONVERSATION_ID;
+  const isProducer = msg.conversationId === producerConvId;
+
   // Process async — return 200 immediately so Wassist doesn't retry
-  void handleWhatsAppCommand(msg.from, msg.body).catch((err) => {
-    console.error("[whatsapp webhook]", err);
-  });
+  void (async () => {
+    try {
+      if (isProducer) {
+        await handleWhatsAppCommand(msg.from, msg.body);
+      } else {
+        // External message — treat as inbound brief
+        await logAction({
+          pillar: "negotiation",
+          trigger: "whatsapp_inbound",
+          action_taken: `WhatsApp brief from ${msg.from}: "${msg.body.slice(0, 80)}"`,
+          channel: "whatsapp",
+        });
+
+        // Acknowledge to the sender
+        try {
+          await sendText(msg.conversationId, "Thanks! I've passed this to the producer. You'll hear back shortly.");
+        } catch { /* best effort */ }
+
+        // Process as a brief
+        await processBrief({
+          source: "whatsapp",
+          from_contact: msg.from,
+          raw_text: msg.body,
+        });
+      }
+    } catch (err) {
+      console.error("[whatsapp webhook]", err);
+    }
+  })();
 
   return NextResponse.json({ ok: true });
 }
