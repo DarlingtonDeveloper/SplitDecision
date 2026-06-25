@@ -11,6 +11,9 @@ export async function processBrief(input: {
   from_contact: string;
   raw_text: string;
   to_address?: string;
+  gmailMessageId?: string;
+  gmailThreadId?: string;
+  lastMessageIdHeader?: string;
 }) {
   const supabase = getSupabaseAdmin();
 
@@ -48,6 +51,7 @@ export async function processBrief(input: {
       caption: parsed.caption,
       parsed_attributes: parsed,
       matched_beat_ids: matches.map((m) => m.id),
+      gmail_message_id: input.gmailMessageId ?? null,
       status: "matched",
     })
     .select("*")
@@ -135,18 +139,27 @@ export async function processNegotiationEmail(input: {
   from: string;
   subject: string;
   body: string;
+  gmailThreadId?: string;
+  lastMessageIdHeader?: string;
+  negotiationId?: string;
 }) {
   const supabase = getSupabaseAdmin();
 
-  const { data: neg } = await supabase
-    .from("negotiations")
-    .insert({
-      counterparty: input.from,
-      record_title: input.subject,
-      thread: [{ role: "them", text: input.body, ts: new Date().toISOString() }],
-    })
-    .select("*")
-    .single();
+  let negId = input.negotiationId;
+  if (!negId) {
+    const { data: neg } = await supabase
+      .from("negotiations")
+      .insert({
+        counterparty: input.from,
+        record_title: input.subject,
+        thread: [{ role: "them", text: input.body, ts: new Date().toISOString() }],
+        gmail_thread_id: input.gmailThreadId ?? null,
+        last_message_id: input.lastMessageIdHeader ?? null,
+      })
+      .select("*")
+      .single();
+    negId = neg?.id;
+  }
 
   await logAction({
     pillar: "negotiation",
@@ -163,7 +176,7 @@ export async function processNegotiationEmail(input: {
 
   await createDraft({
     pillar: "negotiation",
-    related_id: neg?.id,
+    related_id: negId,
     to_address: input.from.includes("@") ? input.from : undefined,
     subject: `Re: ${input.subject}`,
     body: negotiation.draft_message,

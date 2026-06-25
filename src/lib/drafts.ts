@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from "./supabase";
 import { logAction } from "./actions";
 import { nextShortCode } from "./short-code";
 import { notifyDraft, notifySent, sendWhatsApp } from "./whatsapp";
-import { sendEmail } from "./email";
+import { sendEmail } from "./gmail";
 import type { Draft, Pillar } from "./types";
 
 export async function createDraft(input: {
@@ -78,14 +78,26 @@ export async function approveDraft(shortCode: string): Promise<Draft> {
   }
 
   if (draft.channel === "email" && draft.to_address && draft.body) {
-    let body = draft.body;
-    if (draft.payment_link) {
-      body += `\n\nLease payment link: ${draft.payment_link}`;
+    // Look up threading info from the related negotiation
+    let threadId: string | undefined;
+    let inReplyToMessageId: string | undefined;
+    if (draft.related_id) {
+      const { data: neg } = await supabase
+        .from("negotiations")
+        .select("gmail_thread_id, last_message_id")
+        .eq("id", draft.related_id)
+        .maybeSingle();
+      threadId = neg?.gmail_thread_id ?? undefined;
+      inReplyToMessageId = neg?.last_message_id ?? undefined;
     }
+
     await sendEmail({
       to: draft.to_address,
       subject: draft.subject ?? "Re: your enquiry",
-      body,
+      body: draft.body,
+      threadId,
+      inReplyToMessageId,
+      paymentLink: draft.payment_link ?? undefined,
     });
   }
 
