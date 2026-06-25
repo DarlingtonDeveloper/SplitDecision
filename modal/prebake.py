@@ -107,9 +107,9 @@ def _safe_title(path_or_url: str) -> str:
     gpu="T4",
     volumes={"/cache": cache_volume},
     timeout=900,
-    container_idle_timeout=300,
-    allow_concurrent_inputs=4,
+    scaledown_window=300,
 )
+@modal.concurrent(max_inputs=4)
 class ClapEncoder:
     @modal.enter()
     def load(self):
