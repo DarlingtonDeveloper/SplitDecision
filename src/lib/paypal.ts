@@ -75,7 +75,15 @@ export async function createPayPalOrder(input: {
   return { orderId: order.id, approvalUrl };
 }
 
-export async function capturePayPalOrder(orderId: string): Promise<void> {
+export async function capturePayPalOrder(orderId: string): Promise<{
+  id: string;
+  status?: string;
+  purchase_units?: {
+    custom_id?: string;
+    amount?: { currency_code?: string; value?: string };
+    payments?: { captures?: { id?: string; status?: string; amount?: { value?: string } }[] };
+  }[];
+}> {
   const token = await getAccessToken();
   const res = await fetch(`${PAYPAL_BASE}/v2/checkout/orders/${orderId}/capture`, {
     method: "POST",
@@ -85,4 +93,13 @@ export async function capturePayPalOrder(orderId: string): Promise<void> {
     },
   });
   if (!res.ok) throw new Error(`PayPal capture failed: ${await res.text()}`);
+  return (await res.json()) as {
+    id: string;
+    status?: string;
+    purchase_units?: {
+      custom_id?: string;
+      amount?: { currency_code?: string; value?: string };
+      payments?: { captures?: { id?: string; status?: string; amount?: { value?: string } }[] };
+    }[];
+  };
 }
